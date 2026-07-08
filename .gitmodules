@@ -1,0 +1,9 @@
+[submodule "ref/vohive-release"]
+	path = ref/vohive-release
+	url = https://github.com/iniwex5/vohive-release.git
+[submodule "ref/dji-4g-vohive-mac"]
+	path = ref/dji-4g-vohive-mac
+	url = https://github.com/wlzh/dji-4g-vohive-mac.git
+[submodule "openvohive/src"]
+	path = openvohive/src
+	url = https://github.com/openvohive/openvohive.git
