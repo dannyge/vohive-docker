@@ -1,0 +1,40 @@
+# 原生 Linux 场景示例：改身份（一次性）+ 起平台
+# 用法: docker compose up
+# 注意: 改身份只需首次运行一次，之后可注释掉 dji2quectel 服务
+services:
+  # 大疆→移远改身份（一次性，幂等；已是 Quectel 身份会自动跳过）
+  dji2quectel:
+    image: dji2quectel:latest
+    container_name: dji2quectel
+    privileged: true
+    volumes:
+      - /sys:/sys
+      - /lib/modules:/lib/modules:ro
+      - /dev:/dev
+    restart: "no"
+
+  # openvohive 平台（常驻）
+  openvohive:
+    image: openvohive:latest
+    container_name: vohive
+    depends_on:
+      dji2quectel:
+        condition: service_completed_successfully
+    privileged: true
+    volumes:
+      - /dev:/dev
+      - vohive-data:/app/data
+    ports:
+      - "7575:7575"
+    environment:
+      - PROXY_WEB_USERNAME=admin
+      # 不传 PROXY_WEB_PASSWORD 则每次启动生成随机密码（见 docker logs）
+      # - PROXY_WEB_PASSWORD=your-strong-password
+      # Telegram 转发（可选）
+      # - PROXY_TELEGRAM_ENABLED=true
+      # - PROXY_TELEGRAM_BOT_TOKEN=123:abc
+      # - PROXY_TELEGRAM_ADMIN_ID=your-id
+    restart: unless-stopped
+
+volumes:
+  vohive-data:
