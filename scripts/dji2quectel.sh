@@ -1,0 +1,1 @@
+../dji2quectel/dji2quectel.sh
