@@ -1,0 +1,54 @@
+# vohive-legacy 完整配置模板（所有渠道默认禁用）
+# 实际值由 docker-entrypoint.sh 从 PROXY_* 环境变量渲染注入
+bark:
+  enabled: false
+  group: vohive
+  icon: ""
+  level: active
+  urls: []
+email:
+  enabled: false
+  from_address: ""
+  password: ""
+  smtp_host: ""
+  smtp_port: 0
+  to_addresses: []
+  username: ""
+  use_ssl: false
+feishu:
+  app_id: ""
+  app_secret: ""
+  chat_ids: []
+  enabled: false
+pushplus:
+  channel: wechat
+  enabled: false
+  token: ""
+  topic: ""
+qq:
+  app_id: ""
+  app_secret: ""
+  direct_ids: ""
+  enabled: false
+  group_ids: ""
+server:
+  port: ":7575"
+telegram:
+  admin_id: 0
+  base_url: ""
+  bot_token: ""
+  chat_id: 0
+  enabled: false
+  proxy: ""
+web:
+  password: "admin"
+  username: admin
+webhook:
+  enabled: false
+  headers: {}
+  retry_max: 3
+  secret: ""
+  text_template: '{{device_label}} {{text}}'
+  timeout_ms: 5000
+  urls: []
+devices: []
