@@ -100,5 +100,3 @@ git submodule update --init --recursive
 - 本软件仅供个人内部测试，严禁商业及非法用途，使用者自行承担法律责任
 
 详见 `docs/superpowers/specs/2026-07-08-vohive-docker-images-design.md`。
-
-<!-- test: docs-only change should not trigger CI -->
