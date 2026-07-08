@@ -1,0 +1,20 @@
+# ref/ 下已有内容（当前是手动 clone 的），git submodule add 时会被接管，先不忽略
+# 但 submodule 的 .git 数据和临时构建产物要忽略
+
+# 临时构建产物
+*.tmp
+*.bak
+
+# assets 下载脚本产生的临时文件
+/tmp/
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# 不忽略 assets/ 本身（二进制需进仓库，因为是构建依赖且来源第三方可能消失）
+# 不忽略 docs/ ref/ openvohive/ vohive-legacy/ dji2quectel/ scripts/
