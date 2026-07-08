@@ -1,41 +1,207 @@
-# main 分支 / PR 触发的构建
-# tag 发布见 release.yml（无条件触发）
+# 多架构 Docker 镜像构建
 #
-# paths 过滤：只构建相关文件变更时才跑，避免 README/docs 改动浪费 CI。
-# 限制：GitHub paths 不检测 submodule 指针变更（openvohive/src 等），
-#   升级 submodule 时若仅改指针，需手动 workflow_dispatch 触发。
-name: Build (main/PR)
+# 为何用矩阵 + 原生 runner 而非单机 QEMU：
+#   openvohive 的前端用 bun 构建，bun 的 x86_64 版本需要 AVX 指令集。
+#   在 arm64 Mac 上用 QEMU 模拟 amd64 构建会 SIGILL 崩溃。
+#   解法：每个架构在对应原生 runner 上构建（ubuntu-latest=amd64, ubuntu-24.04-arm=arm64），
+#   再用 imagetools create 合并成多架构 manifest。无任何模拟。
+#
+# 触发条件：
+#   - push 到 main：构建并推送 :latest + :sha-<short>
+#   - tag v*：构建并推送 :<tag>（正式发布）
+#   - PR：仅验证构建（不推送）
+#
+# paths-ignore：README/docs 等纯文档改动不触发构建。
+#   限制：若仅改 submodule 指针（openvohive/src）而 GitHub 未识别为内容变更，
+#   可能不触发——此时用 workflow_dispatch 手动触发。
+#
+# 推送目标：GHCR (ghcr.io/<owner>/<image>)
+# 需在仓库 Settings → Actions → General → Workflow permissions 授予 "Read and write permissions"
+
+name: Build Images
 
 on:
   push:
     branches: [main]
-    paths:
-      - 'openvohive/**'
-      - 'vohive-legacy/**'
-      - 'dji2quectel/**'
-      - 'assets/**'
-      - 'scripts/fetch-assets.sh'
-      - 'docker-bake.hcl'
-      - 'docker-compose.yml'
-      - '.github/workflows/build.yml'
-      - '.github/workflows/build-images.yml'
+    tags: ['v*']
+    paths-ignore:
+      - 'README.md'
+      - 'docs/**'
+      - '**/README.md'
+      - '.gitignore'
+      - '.gitmodules'
+      - 'LICENSE'
   pull_request:
     branches: [main]
-    paths:
-      - 'openvohive/**'
-      - 'vohive-legacy/**'
-      - 'dji2quectel/**'
-      - 'assets/**'
-      - 'scripts/fetch-assets.sh'
-      - 'docker-bake.hcl'
-      - 'docker-compose.yml'
-      - '.github/workflows/build.yml'
-      - '.github/workflows/build-images.yml'
+    paths-ignore:
+      - 'README.md'
+      - 'docs/**'
+      - '**/README.md'
+      - '.gitignore'
+      - '.gitmodules'
+      - 'LICENSE'
   workflow_dispatch: {}
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAMESPACE: ${{ github.repository_owner }}
 
 jobs:
   build:
-    # main push 推送；PR 只验证不推送
-    uses: ./.github/workflows/build-images.yml
-    with:
-      push: ${{ github.event_name != 'pull_request' }}
+    name: Build (${{ matrix.image }} / ${{ matrix.suffix }})
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      fail-fast: false
+      # 显式列出 6 种组合（3 镜像 × 2 架构），避免 include 笛卡尔积的歧义
+      matrix:
+        include:
+          # amd64（原生 Intel runner）
+          - { image: openvohive,    suffix: amd64, platform: linux/amd64, runner: ubuntu-latest,   context: .,            dockerfile: openvohive/Dockerfile }
+          - { image: vohive-legacy, suffix: amd64, platform: linux/amd64, runner: ubuntu-latest,   context: .,            dockerfile: vohive-legacy/Dockerfile }
+          - { image: dji2quectel,   suffix: amd64, platform: linux/amd64, runner: ubuntu-latest,   context: ./dji2quectel, dockerfile: dji2quectel/Dockerfile }
+          # arm64（原生 ARM runner，2025-01 起公开仓库免费）
+          - { image: openvohive,    suffix: arm64, platform: linux/arm64, runner: ubuntu-24.04-arm, context: .,            dockerfile: openvohive/Dockerfile }
+          - { image: vohive-legacy, suffix: arm64, platform: linux/arm64, runner: ubuntu-24.04-arm, context: .,            dockerfile: vohive-legacy/Dockerfile }
+          - { image: dji2quectel,   suffix: arm64, platform: linux/arm64, runner: ubuntu-24.04-arm, context: ./dji2quectel, dockerfile: dji2quectel/Dockerfile }
+
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Prepare assets
+        # 仅 vohive-legacy 需要 assets/ 下的闭源二进制；
+        # openvohive 用 submodule 源码，dji2quectel 无依赖
+        if: matrix.image == 'vohive-legacy'
+        run: bash scripts/fetch-assets.sh
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve tags
+        id: tags
+        env:
+          NS_LC: ${{ env.IMAGE_NAMESPACE }}
+          EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_SHA: ${{ github.sha }}
+          IMAGE: ${{ matrix.image }}
+          SUFFIX: ${{ matrix.suffix }}
+        run: |
+          NS_LC="$(echo "$NS_LC" | tr '[:upper:]' '[:lower:]')"
+          BASE="$REGISTRY/$NS_LC/$IMAGE"
+
+          # PR：不推送，仅构建验证
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            echo "push=false" >> "$GITHUB_OUTPUT"
+            echo "tags=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "push=true" >> "$GITHUB_OUTPUT"
+          TAGS="${BASE}:${SUFFIX}"
+
+          if [ "$GITHUB_REF" = "refs/heads/main" ]; then
+            SHORT_SHA="${GITHUB_SHA::7}"
+            TAGS="${TAGS},${BASE}:latest-${SUFFIX},${BASE}:sha-${SHORT_SHA}-${SUFFIX}"
+          fi
+
+          if [ "${GITHUB_REF#refs/tags/}" != "$GITHUB_REF" ]; then
+            VTAG="${GITHUB_REF#refs/tags/}"
+            TAGS="${TAGS},${BASE}:${VTAG}-${SUFFIX}"
+          fi
+
+          echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push (per-arch)
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: ${{ matrix.platform }}
+          push: ${{ steps.tags.outputs.push }}
+          tags: ${{ steps.tags.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+
+  merge:
+    name: Merge manifest (${{ matrix.image }})
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [openvohive, vohive-legacy, dji2quectel]
+
+    steps:
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve merge tags
+        id: mtags
+        env:
+          NS_LC: ${{ env.IMAGE_NAMESPACE }}
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_SHA: ${{ github.sha }}
+          IMAGE: ${{ matrix.image }}
+        run: |
+          NS_LC="$(echo "$NS_LC" | tr '[:upper:]' '[:lower:]')"
+          BASE="$REGISTRY/$NS_LC/$IMAGE"
+
+          # 最终多架构 tag（合并 amd64 + arm64）
+          FINAL_TAGS="$BASE:latest,$BASE:sha-${GITHUB_SHA::7}"
+          if [ "${GITHUB_REF#refs/tags/}" != "$GITHUB_REF" ]; then
+            VTAG="${GITHUB_REF#refs/tags/}"
+            FINAL_TAGS="${FINAL_TAGS},$BASE:${VTAG}"
+          fi
+
+          {
+            echo "final_tags=${FINAL_TAGS}"
+            echo "src_amd64=${BASE}:amd64"
+            echo "src_arm64=${BASE}:arm64"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create multi-arch manifest
+        env:
+          FINAL_TAGS: ${{ steps.mtags.outputs.final_tags }}
+          SRC_AMD64: ${{ steps.mtags.outputs.src_amd64 }}
+          SRC_ARM64: ${{ steps.mtags.outputs.src_arm64 }}
+        run: |
+          # 把逗号分隔的 final_tags 展开成多个 -t 参数
+          ARGS=""
+          IFS=',' read -ra FT <<< "$FINAL_TAGS"
+          for t in "${FT[@]}"; do
+            ARGS="${ARGS} -t ${t}"
+          done
+          # shellcheck disable=SC2086
+          docker buildx imagetools create $ARGS "$SRC_AMD64" "$SRC_ARM64"
+
+      - name: Inspect result
+        env:
+          NS_LC: ${{ env.IMAGE_NAMESPACE }}
+        run: |
+          NS_LC="$(echo "$NS_LC" | tr '[:upper:]' '[:lower:]')"
+          docker buildx imagetools inspect "$REGISTRY/$NS_LC/${{ matrix.image }}:latest"
