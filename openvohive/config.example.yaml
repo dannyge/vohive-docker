@@ -1,0 +1,10 @@
+# openvohive 最小配置骨架
+# 实际值由 PROXY_* 环境变量覆盖（viper AutomaticEnv）
+# 仅用于满足 viper ReadInConfig() 的文件存在要求
+server:
+  port: 7575
+  debug: false
+web:
+  username: admin
+  password: admin
+devices: []

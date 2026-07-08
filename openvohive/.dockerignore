@@ -1,0 +1,10 @@
+# 排除 openvohive/src 里的无关文件（减小构建上下文）
+openvohive/src/.git
+openvohive/src/.github
+**/*.log
+**/*.db
+**/*.sqlite*
+**/.DS_Store
+
+# 排除我们自己的构建产物
+*.tmp
