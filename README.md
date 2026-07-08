@@ -57,6 +57,22 @@ docker buildx bake --load
 REGISTRY=your-registry.com docker buildx bake --push
 ```
 
+> **本地构建限制**：openvohive 的 amd64 镜像在 arm64 Mac 上无法本地构建（bun 的 x86_64 版需要 AVX，QEMU 模拟不提供）。amd64 构建请在 amd64 机器上跑，或使用下面的 GitHub Actions 自动构建。
+
+## CI 自动构建（GitHub Actions）
+
+推送到 GitHub 后，`.github/workflows/build.yml` 会自动构建三镜像的多架构（amd64+arm64）版本，推送到 GHCR：
+
+- **push 到 main** → 构建 `:latest` + `:sha-<short>`
+- **tag `v*`** → 构建正式发布 `:<tag>`
+- **PR** → 仅验证构建（不推送）
+
+每个架构在对应**原生 runner** 上构建（`ubuntu-latest`=amd64、`ubuntu-24.04-arm`=arm64），避免 QEMU 模拟导致的 AVX 问题，再用 `imagetools create` 合并成多架构 manifest。
+
+镜像地址：`ghcr.io/<owner>/<image>:latest`（如 `ghcr.io/<owner>/openvohive:latest`）
+
+**首次使用前**：仓库 Settings → Actions → General → Workflow permissions，选 "Read and write permissions"。
+
 ## 数据持久化
 
 挂载 `/app/data` 目录（含 SQLite 库和日志）：
