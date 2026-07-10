@@ -8,7 +8,7 @@
 |---|---|
 | [**openvohive**](https://github.com/users/dannyge/packages/container/openvohive) | 开源版，聚焦短信收发/转发（Telegram/Email/Webhook），主力 |
 | [**vohive-legacy**](https://github.com/users/dannyge/packages/container/vohive-legacy) | 闭源完整版 v1.5.5（含 VoWiFi/代理等），过渡兼容 |
-| [**dji2quectel**](https://github.com/users/dannyge/packages/container/dji2quectel) | 把大疆 4G 模块改写为移远 Quectel 身份（一次性工具） |
+| [**dji2quectel**](https://github.com/users/dannyge/packages/container/dji2quectel)（[组件文档](dji2quectel/README.md)） | 把大疆 4G 模块改写为移远 Quectel 身份（一次性工具） |
 | [`scripts/setup.sh`](scripts/setup.sh) | macOS 上用 OrbStack 一键部署 |
 
 ## 快速开始
@@ -19,8 +19,10 @@
 git clone --recurse-submodules https://github.com/dannyge/vohive-docker.git
 cd vohive-docker
 bash scripts/fetch-assets.sh        # 下载 legacy 二进制（构建 legacy 时需要）
-./scripts/setup.sh                  # 一键部署
+./scripts/setup.sh                  # 一键部署（建 OrbStack VM + 改身份 + 起平台）
 ```
+
+> **大疆模块首次使用**：大疆 4G 模块（QDC507，本质 Quectel EG25-G）的 USB 身份是大疆私有的 `2ca3:4006`，openvohive 无法识别，必须先改写为 Quectel EC25 的 `2c7c:0125`（一次性、终身有效）。`setup.sh` 会自动处理这步；若需手动执行或排查，见 [改写操作手册](docs/dji2quectel-runbook.md)。
 
 ### 原生 Linux 用户
 
@@ -93,10 +95,19 @@ git submodule update --init --recursive
 | `ref/dji-4g-vohive-mac` | [wlzh/dji-4g-vohive-mac](https://github.com/wlzh/dji-4g-vohive-mac) | 参考（mcc-mnc-table.json、改身份教程） |
 | `openvohive/src` | [openvohive/openvohive](https://github.com/openvohive/openvohive) | openvohive 镜像的源码 |
 
+## 文档
+
+| 文档 | 内容 |
+|---|---|
+| [改写操作手册](docs/dji2quectel-runbook.md) | 大疆→Quectel USB 身份改写的分步执行手册（agent 可直接执行，含检查点和故障排除） |
+| [dji2quectel 组件文档](dji2quectel/README.md) | dji2quectel 工具的用法、环境变量、特性与约束 |
+| [设计文档](docs/superpowers/specs/2026-07-08-vohive-docker-images-design.md) | 完整架构设计：背景核实、镜像设计、风险与约束、验收标准 |
+| [实施计划](docs/superpowers/plans/2026-07-08-vohive-docker-images.md) | 9 个 Task 的逐步实施记录 |
+
 ## License 与免责
 
 - openvohive 镜像基于 [openvohive/openvohive](https://github.com/openvohive/openvohive)（PolyForm Noncommercial，仅非商业）
 - vohive-legacy 含闭源二进制（原作者 iniwex5，已停维），仅供过渡兼容
 - 本软件仅供个人内部测试，严禁商业及非法用途，使用者自行承担法律责任
 
-详见 `docs/superpowers/specs/2026-07-08-vohive-docker-images-design.md`。
+更多设计细节见 [文档](#文档) 段落。
