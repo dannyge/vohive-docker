@@ -13,16 +13,25 @@
 
 ## 快速开始
 
-### macOS 用户
+> **⚠️ 环境要求（实测确认）**：openvohive 需要**完整 Linux 内核**（含 `option`/`qmi_wwan` 驱动 + USB uevent 支持）才能发现和管理 4G 模块。OrbStack 的定制内核缺少这些模块，**仅能用于 dji2quectel 改身份**，不能跑 openvohive。完整运行环境请用 UTM Ubuntu VM 或真实 Linux 主机。
+
+### macOS 用户（UTM Ubuntu VM，推荐）
 
 ```bash
+# 1. 安装 UTM 并创建 Ubuntu 24.04 ARM VM，SSH 可达，USB 设备直通（大疆模块）
+#    教程见 ref/dji-4g-vohive-mac/README.md 第 1-4 步
+
+# 2. 在 VM 内：
 git clone --recurse-submodules https://github.com/dannyge/vohive-docker.git
 cd vohive-docker
 bash scripts/fetch-assets.sh        # 下载 legacy 二进制（构建 legacy 时需要）
-./scripts/setup.sh                  # 一键部署（建 OrbStack VM + 改身份 + 起平台）
+docker buildx bake --load           # 构建三镜像
+docker compose up                   # 改身份（首次）+ 起 openvohive 平台
 ```
 
-> **大疆模块首次使用**：大疆 4G 模块（QDC507，本质 Quectel EG25-G）的 USB 身份是大疆私有的 `2ca3:4006`，openvohive 无法识别，必须先改写为 Quectel EC25 的 `2c7c:0125`（一次性、终身有效）。`setup.sh` 会自动处理这步；若需手动执行或排查，见 [改写操作手册](docs/dji2quectel-runbook.md)。
+> **大疆模块首次使用**：大疆 4G 模块（QDC507，本质 Quectel EG25-G）的 USB 身份是大疆私有的 `2ca3:4006`，openvohive 无法识别，必须先改写为 Quectel EC25 的 `2c7c:0125`（一次性、终身有效）。`docker compose up` 会自动处理这步；若需手动执行或排查，见 [改写操作手册](docs/dji2quectel-runbook.md)。
+
+> **OrbStack 用户**：OrbStack 可用于运行 dji2quectel 改身份（`usbserial generic` 回退驱动够用），但改完后请把模块直通到 UTM Ubuntu VM 跑 openvohive（OrbStack 内核缺 QMI/uevent）。
 
 ### 原生 Linux 用户
 

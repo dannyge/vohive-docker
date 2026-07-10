@@ -586,9 +586,11 @@ target "dji2quectel" {
 | openvohive license 非商业 | PolyForm Noncommercial | README 明确标注，限定使用场景 |
 | 闭源 vohive-legacy 二进制不可审计、作者停维 | 可能含未知的许可/自毁逻辑；无安全更新 | 定位为过渡，鼓励迁移到 openvohive |
 | **OrbStack 内核无 `option` 驱动（实测确认）** | OrbStack 定制内核（7.0.x）未编译 `option` 模块，`modprobe option` 报 Module not found | dji2quectel.sh 已加 `usbserial generic` 回退（实测可用）；openvohive 长期运行建议用真实 Linux 或 UTM Ubuntu VM |
+| **OrbStack 内核无 QMI 驱动（实测确认）** | `qmi_wwan` 模块不存在，无 `/dev/cdc-wdm0`，无 USB 网络接口。openvohive 设备发现依赖 QMI 接口识别调制解调器，缺它则扫描结果"未发现调制解调器" | openvohive 无法在 OrbStack 上发现设备。必须用完整内核环境（UTM Ubuntu / 真实 Linux） |
+| **OrbStack 内核不广播 USB uevent（实测确认）** | NETLINK_KOBJECT_UEVENT 在 OrbStack VM 不工作——sysfs authorized 0/1、USB unbind/rebind、物理插拔均不产生 uevent（Python netlink 监听器 60s+物理插拔均无事件）。openvohive 的热插拔发现 100% 依赖 uevent | openvohive 的 udev 监听器在 OrbStack 上无效。有 `POST /api/devices/actions/rescan` 可手动触发扫描，但受限于 QMI 缺失仍无法发现 |
 | **socat 探测需内联串口参数** | socat 打开设备会重置 termios，前置 stty 无效；裸 `socat -,crnl` 收不到 Quectel 响应 | dji2quectel.sh 改用 `socat - $dev,b115200,raw,echo=0,crnl`（实测修复） |
-| **openvohive 只认 VID `2c7c`(Quectel)/`05c6`(高通)** | 源码 `discovery_compat.go` 硬编码 VID 过滤，大疆 `2ca3` 不会被识别 | 这正是必须改写 USB 身份的根本原因；改写后 openvohive 能通过 sysfs 发现设备（实测 OrbStack 容器可读 `/sys/bus/usb`） |
-| **openvohive 用 netlink uevent 监听热插拔** | 不依赖 udev 守护进程，用内核 NETLINK_KOBJECT_UEVENT | 容器/VM 内默认可用（实测） |
+| **openvohive 只认 VID `2c7c`(Quectel)/`05c6`(高通)** | 源码 `discovery_compat.go` 硬编码 VID 过滤，大疆 `2ca3` 不会被识别 | 这正是必须改写 USB 身份的根本原因；改写后 VID=2c7c 能被 sysfs 扫描识别（实测 OrbStack 容器可读 `/sys/bus/usb`，VID 正确） |
+| **openvohive 设备发现机制** | 启动时只处理 config.yaml 预置的 devices；自动发现靠 udev netlink uevent；有 `POST /api/devices/actions/rescan` 手动触发扫描（不依赖 uevent） | 完整内核环境下 uevent 自动工作；OrbStack 下可用 rescan API 但受 QMI 缺失限制 |
 | 6mb 备份二进制来源第三方 | 非 iniwex5 官方发布，信任度需用户自评 | README 注明来源，提供 sha1 供校验 |
 | `AT+CFUN=1,1` 软重启致 USB 直通短暂断开 | VID/PID 变化触发重新枚举 | setup 脚本等待重新枚举后重绑直通 |
 | `modprobe option` 须匹配宿主内核版本 | 容器场景模块版本不匹配会失败 | 约束文档化；VM/真机场景内核一致 |
