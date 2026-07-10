@@ -585,8 +585,10 @@ target "dji2quectel" {
 | openvohive 二进制为源码编译，需 Go 1.26.3 + Bun 环境 | 多阶段 Dockerfile 内解决，用户无需本地装 | 构建阶段镜像含完整 toolchain |
 | openvohive license 非商业 | PolyForm Noncommercial | README 明确标注，限定使用场景 |
 | 闭源 vohive-legacy 二进制不可审计、作者停维 | 可能含未知的许可/自毁逻辑；无安全更新 | 定位为过渡，鼓励迁移到 openvohive |
-| OrbStack `option` 驱动不确定是否存在 | 容器内 modprobe 可能失败 | macOS 走 VM 路线（内核完整），不走容器 |
-| OrbStack Issue #2511（容器访问 USB 串口 bug） | 平台镜像若在 OrbStack 容器跑可能受影响 | macOS 场景平台镜像也在 VM 内 docker run，规避 |
+| **OrbStack 内核无 `option` 驱动（实测确认）** | OrbStack 定制内核（7.0.x）未编译 `option` 模块，`modprobe option` 报 Module not found | dji2quectel.sh 已加 `usbserial generic` 回退（实测可用）；openvohive 长期运行建议用真实 Linux 或 UTM Ubuntu VM |
+| **socat 探测需内联串口参数** | socat 打开设备会重置 termios，前置 stty 无效；裸 `socat -,crnl` 收不到 Quectel 响应 | dji2quectel.sh 改用 `socat - $dev,b115200,raw,echo=0,crnl`（实测修复） |
+| **openvohive 只认 VID `2c7c`(Quectel)/`05c6`(高通)** | 源码 `discovery_compat.go` 硬编码 VID 过滤，大疆 `2ca3` 不会被识别 | 这正是必须改写 USB 身份的根本原因；改写后 openvohive 能通过 sysfs 发现设备（实测 OrbStack 容器可读 `/sys/bus/usb`） |
+| **openvohive 用 netlink uevent 监听热插拔** | 不依赖 udev 守护进程，用内核 NETLINK_KOBJECT_UEVENT | 容器/VM 内默认可用（实测） |
 | 6mb 备份二进制来源第三方 | 非 iniwex5 官方发布，信任度需用户自评 | README 注明来源，提供 sha1 供校验 |
 | `AT+CFUN=1,1` 软重启致 USB 直通短暂断开 | VID/PID 变化触发重新枚举 | setup 脚本等待重新枚举后重绑直通 |
 | `modprobe option` 须匹配宿主内核版本 | 容器场景模块版本不匹配会失败 | 约束文档化；VM/真机场景内核一致 |
@@ -596,12 +598,6 @@ target "dji2quectel" {
 ## 10. 范围边界（本期不做）
 
 - **不采用 Vagrant**：核实确认 Vagrant 在 Apple Silicon Mac 上不可用（VirtualBox 无 ARM 支持、HashiCorp 推向 EOL）。其标准化/可重复诉求已由 OrbStack + `setup.sh`/`vm-init.sh` 覆盖（`orb create` 等同 box、`vm-init.sh` 等同 provisioner、`setup.sh` 等同 `vagrant up`，且幂等可重入）。
-- 不自研 VM 镜像（ISO/qcow2）：VM 层交给 OrbStack/UTM 等现有工具。
-- 不实现 UTM 的完整 CLI 自动化（ROI 低，仅文档降级）。
-- 不做 armv7 镜像（虽有二进制，非本期目标）。
-- 不实现 openvohive 的源码改造/功能增强（仅打包构建）。
-- 不自建镜像仓库推送（bake 输出本地或用户自定 registry）。
-
 - 不自研 VM 镜像（ISO/qcow2）：VM 层交给 OrbStack/UTM 等现有工具。
 - 不实现 UTM 的完整 CLI 自动化（ROI 低，仅文档降级）。
 - 不做 armv7 镜像（虽有二进制，非本期目标）。

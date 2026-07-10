@@ -7,19 +7,20 @@ set -euo pipefail
 # 加载辅助函数（与 setup.sh 共用同一份）
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=lib/common.sh
-. "${SCRIPT_DIR}/lib/common.sh" 2>/dev/null || . /tmp/lib/common.sh
+. "${SCRIPT_DIR}/lib/common.sh" 2>/dev/null || . /opt/vohive/lib/common.sh
 
 require_root
 
 VM_NAME="${VOHIVE_VM_NAME:-vohive}"
 IMAGE="${VOHIVE_IMAGE:-openvohive:latest}"
 DATA_DIR="/opt/vohive/data"
+DEPLOY_DIR="${VOHIVE_DEPLOY_DIR:-/opt/vohive}"
 
 # ── 1. 安装 Docker（若未装）──────────────────────────────
 if ! command -v docker >/dev/null 2>&1; then
   log "安装 Docker..."
   apt-get update -qq
-  apt-get install -y -qq ca-certificates curl socat usbutils
+  apt-get install -y -qq ca-certificates curl socat usbutils kmod
   install -m 0755 -d /etc/apt/keyrings
   curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
   chmod a+r /etc/apt/keyrings/docker.asc
@@ -33,18 +34,31 @@ else
 fi
 
 # ── 2. 改 USB 身份（幂等）────────────────────────────────
-# dji2quectel.sh 由 setup.sh 一并推入 /tmp/
-if [ -f /tmp/dji2quectel.sh ]; then
+# dji2quectel.sh 由 setup.sh 一并传入 /opt/vohive/
+D2Q="${DEPLOY_DIR}/dji2quectel.sh"
+if [ -f "$D2Q" ]; then
   log "执行 USB 身份改写（幂等，已是 Quectel 则跳过）..."
-  bash /tmp/dji2quectel.sh || warn "改写未完成或需要重新绑定 USB 直通后重试"
+  bash "$D2Q" || warn "改写未完成或需要重新绑定 USB 直通后重试"
+  # 改身份后模块重新枚举，需重新加载驱动生成 ttyUSB（OrbStack 无 option，用 usbserial）
+  if lsusb 2>/dev/null | grep -qi "2c7c:0125"; then
+    log "为 Quectel 身份加载 usbserial 驱动..."
+    modprobe usbserial 2>/dev/null || true
+    NEW_ID="/sys/bus/usb-serial/drivers/generic/new_id"
+    [ -f "$NEW_ID" ] && echo "2c7c 0125" > "$NEW_ID" 2>/dev/null || true
+    # 也试 option（真实 Linux/UTM 环境有此驱动）
+    modprobe option 2>/dev/null && echo "2c7c 0125" > /sys/bus/usb-serial/drivers/option1/new_id 2>/dev/null || true
+    sleep 2
+    log "ttyUSB 设备: $(ls /dev/ttyUSB* 2>/dev/null | wc -l) 个"
+  fi
 fi
 
 # ── 3. 加载镜像（若 VM 内无）────────────────────────────
-# setup.sh 会 docker save 推入 /tmp/*.tar，这里 load
-for tarball in /tmp/openvohive.tar /tmp/vohive-legacy.tar; do
-  [ -f "$tarball" ] || continue
-  log "加载镜像: $tarball"
-  docker load -i "$tarball" && rm -f "$tarball"
+# setup.sh 会 docker save 推入；docker load 从 stdin 读
+for img in openvohive vohive-legacy; do
+  TARBALL="${DEPLOY_DIR}/${img}.tar"
+  [ -f "$TARBALL" ] || continue
+  log "加载镜像: $TARBALL"
+  docker load -i "$TARBALL" && rm -f "$TARBALL"
 done
 
 # ── 4. 启动平台容器（幂等）──────────────────────────────

@@ -75,17 +75,21 @@ fi
 ok "平台镜像就绪"
 
 # ── 5. 传输脚本和镜像到 VM ──────────────────────────────
+# 注意：OrbStack machine 的 /tmp 是只读挂载，用 /opt/vohive（可写）
 log "传输部署脚本到 VM..."
-orb push "$VM_NAME" "$SCRIPT_DIR/vm-init.sh" /tmp/vm-init.sh
-orb push "$VM_NAME" "$SCRIPT_DIR/lib/common.sh" /tmp/lib/common.sh
-orb push "$VM_NAME" "$PROJECT_ROOT/dji2quectel/dji2quectel.sh" /tmp/dji2quectel.sh
+DEPLOY_DIR="/opt/vohive"
+orb -m "$VM_NAME" sudo mkdir -p "$DEPLOY_DIR/lib"
+cat "$SCRIPT_DIR/vm-init.sh" | orb -m "$VM_NAME" sudo tee "$DEPLOY_DIR/vm-init.sh" >/dev/null
+cat "$SCRIPT_DIR/lib/common.sh" | orb -m "$VM_NAME" sudo tee "$DEPLOY_DIR/lib/common.sh" >/dev/null
+cat "$PROJECT_ROOT/dji2quectel/dji2quectel.sh" | orb -m "$VM_NAME" sudo tee "$DEPLOY_DIR/dji2quectel.sh" >/dev/null
+orb -m "$VM_NAME" sudo chmod +x "$DEPLOY_DIR"/*.sh
 
 log "传输平台镜像到 VM（docker save | load）..."
 docker save "$PLATFORM_IMAGE" | orb -m "$VM_NAME" docker load
 
 # ── 6. VM 内执行初始化 ──────────────────────────────────
 log "在 VM 内执行初始化..."
-orb -m "$VM_NAME" sudo bash /tmp/vm-init.sh
+orb -m "$VM_NAME" sudo bash "$DEPLOY_DIR/vm-init.sh"
 
 # ── 7. 输出访问信息 ─────────────────────────────────────
 VM_IP=$(orb -m "$VM_NAME" ip 2>/dev/null | head -1 || orb -m "$VM_NAME" hostname -I | awk '{print $1}')
