@@ -12,8 +12,18 @@ if [ -z "${PROXY_WEB_PASSWORD:-}" ]; then
   export PROXY_WEB_PASSWORD
 fi
 
-# ── 配置路径：默认内置骨架，用户可挂载自定义覆盖 ─────────────────
-CONFIG="${VOHIVE_CONFIG:-/app/config/config.yaml}"
+# ── 配置路径：持久化到 /app/data/config.yaml（容器重启不丢）──────
+# 首次启动时从内置模板复制；后续重启沿用已持久化的配置（含设备/通知设置）
+PERSIST_CONFIG="/app/data/config.yaml"
+if [ -n "${VOHIVE_CONFIG:-}" ]; then
+  CONFIG="$VOHIVE_CONFIG"
+elif [ -f "$PERSIST_CONFIG" ]; then
+  CONFIG="$PERSIST_CONFIG"
+else
+  # 首次启动：从内置模板复制到持久化目录
+  cp /app/config/config.yaml "$PERSIST_CONFIG"
+  CONFIG="$PERSIST_CONFIG"
+fi
 
 # ── 数据/日志目录 ─────────────────────────────────────────
 mkdir -p /app/data/logs
