@@ -9,7 +9,7 @@
 | [**openvohive**](https://github.com/users/dannyge/packages/container/openvohive) | 开源版，聚焦短信收发/转发（Telegram/Email/Webhook），主力 |
 | [**vohive-legacy**](https://github.com/users/dannyge/packages/container/vohive-legacy) | 闭源完整版 v1.5.5（含 VoWiFi/代理等），过渡兼容 |
 | [**dji2quectel**](https://github.com/users/dannyge/packages/container/dji2quectel)（[组件文档](dji2quectel/README.md)） | 把大疆 4G 模块改写为移远 Quectel 身份（一次性工具） |
-| [`scripts/setup.sh`](scripts/setup.sh) | macOS 上用 OrbStack 一键部署 |
+| [`scripts/setup.sh`](scripts/setup.sh) | macOS 上用 UTM VM + SSH 一键部署（含设备自动添加） |
 
 ## 快速开始
 
@@ -17,21 +17,24 @@
 
 ### macOS 用户（UTM Ubuntu VM，推荐）
 
-```bash
-# 1. 安装 UTM 并创建 Ubuntu 24.04 ARM VM，SSH 可达，USB 设备直通（大疆模块）
-#    教程见 ref/dji-4g-vohive-mac/README.md 第 1-4 步
+**前置准备**（一次性，约 20 分钟）：
+1. 安装 UTM：`brew install --cask utm`
+2. 下载 Ubuntu 24.04 ARM64 ISO（[cdimage.ubuntu.com](https://cdimage.ubuntu.com/releases/24.04.4/release/ubuntu-24.04.4-live-server-arm64.iso)）
+3. 在 UTM 里创建 Ubuntu VM（Virtualize + aarch64 + 2GB RAM + 20GB 磁盘 + 勾选 OpenSSH server）
+4. 在 UTM 工具栏 USB 图标里勾选大疆/Quectel 模块做直通
 
-# 2. 在 VM 内：
+**一键部署**（在 Mac 上运行）：
+```bash
 git clone --recurse-submodules https://github.com/dannyge/vohive-docker.git
 cd vohive-docker
-bash scripts/fetch-assets.sh        # 下载 legacy 二进制（构建 legacy 时需要）
-docker buildx bake --load           # 构建三镜像
-docker compose up                   # 改身份（首次）+ 起 openvohive 平台
+./scripts/setup.sh    # 交互式输入 VM IP/用户名/密码，自动完成部署
 ```
 
-> **大疆模块首次使用**：大疆 4G 模块（QDC507，本质 Quectel EG25-G）的 USB 身份是大疆私有的 `2ca3:4006`，openvohive 无法识别，必须先改写为 Quectel EC25 的 `2c7c:0125`（一次性、终身有效）。`docker compose up` 会自动处理这步；若需手动执行或排查，见 [改写操作手册](docs/dji2quectel-runbook.md)。
+setup.sh 会自动：装 Docker → 改 USB 身份（首次）→ 拉 openvohive 镜像 → 起容器 → 添加设备到 openvohive（API 调用）。
 
-> **OrbStack 用户**：OrbStack 可用于运行 dji2quectel 改身份（`usbserial generic` 回退驱动够用），但改完后请把模块直通到 UTM Ubuntu VM 跑 openvohive（OrbStack 内核缺 QMI/uevent）。
+> **大疆模块首次使用**：大疆 4G 模块（QDC507，本质 Quectel EG25-G）的 USB 身份是大疆私有的 `2ca3:4006`，openvohive 无法识别，必须先改写为 Quectel EC25 的 `2c7c:0125`（一次性、终身有效）。setup.sh 会自动处理；若需手动执行或排查，见 [改写操作手册](docs/dji2quectel-runbook.md)。
+
+> **OrbStack 用户**：OrbStack 可用于运行 dji2quectel 改身份（`usbserial generic` 回退驱动够用），但**不能跑 openvohive**（定制内核缺 QMI/uevent）。改完身份后请把模块直通到 UTM Ubuntu VM。
 
 ### 原生 Linux 用户
 
