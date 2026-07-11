@@ -6,4 +6,4 @@
 	url = https://github.com/wlzh/dji-4g-vohive-mac.git
 [submodule "openvohive/src"]
 	path = openvohive/src
-	url = https://github.com/openvohive/openvohive.git
+	url = https://github.com/dannyge/openvohive.git
