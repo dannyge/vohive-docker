@@ -48,6 +48,8 @@ docker compose up                   # 改身份 + 起平台
 
 访问 `http://<IP>:7575`，默认账号 `admin`。未设密码时 `docker logs vohive | grep 密码` 查看随机密码。
 
+> **Unraid 用户**：直接拉取 `ghcr.io/dannyge/openvohive:latest` 镜像，通过 Web UI 创建容器。详见 [Unraid 部署指南](docs/unraid-deploy.md)。
+
 ## 配置
 
 全部通过环境变量注入（`PROXY_*` 前缀），无需挂载配置文件：
@@ -111,6 +113,7 @@ git submodule update --init --recursive
 
 | 文档 | 内容 |
 |---|---|
+| [Unraid 部署指南](docs/unraid-deploy.md) | 在 Unraid（x86_64）上通过 Docker Web UI 部署 openvohive 的完整步骤 |
 | [改写操作手册](docs/dji2quectel-runbook.md) | 大疆→Quectel USB 身份改写的分步执行手册（agent 可直接执行，含检查点和故障排除） |
 | [dji2quectel 组件文档](dji2quectel/README.md) | dji2quectel 工具的用法、环境变量、特性与约束 |
 | [设计文档](docs/superpowers/specs/2026-07-08-vohive-docker-images-design.md) | 完整架构设计：背景核实、镜像设计、风险与约束、验收标准 |
