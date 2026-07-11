@@ -7,4 +7,9 @@ server:
 web:
   username: admin
   password: admin
+bark:
+  enabled: false
+  # server_url: https://api.day.app  # 官方（默认）或自建 http://your-ip:port
+  # device_key: 你的BarkKey
+  # title: openvohive
 devices: []
