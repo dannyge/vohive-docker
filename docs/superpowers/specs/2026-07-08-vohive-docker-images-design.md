@@ -20,7 +20,7 @@
 1. **`openvohive` 镜像**（主力）：基于开源 fork `openvohive/openvohive` 源码构建，聚焦短信收发与转发，长期维护。
 2. **`vohive-legacy` 镜像**（过渡）：基于 6mb 备份的闭源完整版二进制（v1.5.5），仅作兼容保留，将逐步淡出。
 3. **`dji2quectel`**（工具）：把大疆模块 USB 身份永久改写为移远 Quectel EC25。主形态为纯 shell 脚本，额外打包成 Docker 镜像供原生 Linux 用户一句 `docker run` 使用。
-4. **`setup.sh` 编排脚本**（macOS 场景）：在 Mac 上一条命令拉起 OrbStack Linux VM + USB 直通 + 改身份 + 跑平台镜像。
+4. **`setup.sh` 编排脚本**（macOS 场景）：在 Mac 上通过 SSH 连接 UTM Ubuntu VM，一键完成 USB 直通检查 + 改身份 + 部署 openvohive + 设备自动添加。
 
 ### 1.3 核心需求
 
@@ -83,21 +83,31 @@
 
 ### 2.4 OrbStack USB 直通与内核模块（运行环境的关键约束）
 
+> **实测结论**：OrbStack **不能跑 openvohive**。以下事实均经真实硬件（DJI QDC507 模块）实测确认，非推测。OrbStack 仅可用于 dji2quectel 改身份（usbserial generic 回退驱动够用）。openvohive 的完整运行环境请用 UTM Ubuntu VM 或真实 Linux 主机。
+
 | 事实 | 来源 |
 |---|---|
 | OrbStack v2.2.0（2025-06-04）起支持 USB 设备直通，支持 serial/UART | 官方 release notes |
 | USB 直通支持**容器**和**Linux machine**两种形态 | 官方站点描述 + Reddit 实测帖 |
-| OrbStack 用**自研定制 Linux 内核**，模块支持取决于编译内容 | 官方文档 |
-| `option`（USB serial）驱动**是否在 OrbStack 内核中无法确认，很可能没有** | 无直接文档，类比 #2508（gs_usb 需求）推断 |
+| OrbStack 用**自研定制 Linux 内核**（实测版本 `7.0.11-orbstack-00360-gc9bc4d96ac70`），模块支持取决于编译内容 | 官方文档 + 实测 `uname -r` |
+| **OrbStack 内核无 `option` 驱动（实测确认）**：`modprobe option` 报 `Module option not found in directory /lib/modules/7.0.11-orbstack-...` | 实测 |
+| **OrbStack 内核无 `qmi_wwan` 驱动（实测确认）**：`modprobe qmi_wwan` 报同样错误；无 `/dev/cdc-wdm0`；无 USB 网络接口 | 实测 |
+| **OrbStack 内核不广播 USB uevent（实测确认）**：用 Python netlink 监听器（NETLINK_KOBJECT_UEVENT）测试，`authorized 0/1`、USB `unbind/rebind`、物理插拔均不产生任何 uevent（60s 超时无事件） | 实测 |
 | 自编译/加载自定义模块**不被官方支持**，每次 OrbStack 更新内核版本即失效 | 官方 Linux machines 文档 |
 | **Issue #2511**：OrbStack 2.2.1，USB 串口设备在 Linux machine 可用，但从 Docker 容器打开**失败**（已知 bug） | GitHub issue |
 | Docker Desktop on macOS **不支持** USB 直通到容器（无 hypervisor 级支持） | Docker 官方论坛 |
 | **Lume 基于 Apple Virtualization Framework，该框架不暴露 USB 直通 API** → Lume **不能** USB 直通 | Apple Developer Forums #825379、UTM Issue #3778 |
 
+**实测时使用的 OrbStack 版本**：
+- OrbStack 应用版本：v2.2.1（含 USB 直通功能，v2.2.0 起支持）
+- OrbStack 定制内核版本：`7.0.11-orbstack-00360-gc9bc4d96ac70`
+- VM 镜像：Ubuntu 24.04（通过 `orb create ubuntu:24.04` 创建）
+
 **结论**：
-- `dji2quectel`（需 `modprobe option` + 写 `/sys/new_id`）在 OrbStack **容器**里不可靠（缺驱动 + #2511 bug）。
-- 但在 OrbStack **Linux machine（完整 VM）** 里，内核完整、`/lib/modules` 齐全，可正常 `modprobe`。
-- 故 macOS 场景采用**纯 VM 路线**：`setup.sh` 建 OrbStack Ubuntu machine，在 VM 内直接 `bash dji2quectel.sh` 改身份（不套容器），再在 VM 内 `docker run` 跑平台镜像。
+- OrbStack 的定制内核精简了移动通信相关的全部内核模块（`option`、`qmi_wwan`、`cdc_mbim` 均不存在），且不通过 NETLINK_KOBJECT_UEVENT 广播 USB 事件。
+- `dji2quectel` 可在 OrbStack 上运行（`usbserial generic` 回退驱动够用，实测改写成功）。
+- **openvohive 无法在 OrbStack 上发现设备**（缺 QMI 接口 + 无 uevent 触发设备发现）。
+- macOS 场景的完整运行环境改为 **UTM Ubuntu VM**（完整内核：`option`/`qmi_wwan` 自动绑定，uevent 正常工作，实测 openvohive 成功发现设备并收发短信）。
 - `dji2quectel` 的 Docker 镜像版本仅供**原生 Linux 用户**一句 `docker run` 使用。
 
 ### 2.5 大疆改 Quectel 的 AT 指令（来自 mac 项目 README 第 5 节）
@@ -501,49 +511,59 @@ docker run --rm --privileged \
 
 **约束**：`modprobe` 加载的 `option` 驱动须匹配**宿主内核版本**。故仅能在真实 Linux 主机或 Linux VM（UTM/OrbStack machine）内跑，不能在 macOS 裸机直接 `docker run`。
 
-## 7. `setup.sh` 编排（macOS 场景）
+## 7. `setup.sh` 编排（macOS 场景，UTM Ubuntu VM）
+
+> **方案变更说明**：原设计使用 OrbStack 作为 macOS VM 方案。经真实硬件实测，OrbStack 定制内核缺 `option`/`qmi_wwan`/uevent（见 2.4 节），**无法运行 openvohive**。已改为 UTM Ubuntu VM（完整内核，实测 openvohive 成功发现设备并收发短信）。OrbStack 仍可用于 dji2quectel 改身份（usbserial generic 回退）。
 
 ### 7.1 职责
 
-在 Mac 上一条命令完成：装 OrbStack → 建 Linux VM → USB 直通 → VM 内改身份 + 跑平台镜像 → 输出后台地址。
+在 Mac 上通过 SSH 连接 UTM Ubuntu VM，完成：USB 直通检查 → 装 Docker → 改身份 → 部署 openvohive → 设备自动添加 → 输出后台地址。
 
-### 7.2 流程
+### 7.2 前置条件（一次性手动）
+
+1. 安装 UTM：`brew install --cask utm`
+2. 下载 Ubuntu 24.04 ARM64 ISO，在 UTM 里创建 VM（Virtualize + aarch64 + 2GB + 20GB + OpenSSH）
+3. 在 UTM 工具栏 USB 图标里勾选大疆/Quectel 模块做直通
+4. VM IP/用户名/密码准备好
+
+### 7.3 流程
 
 ```
 ./scripts/setup.sh
-  ├─ 1. 检查 OrbStack，未装则 brew install --cask orbstack，提示启动授权
-  ├─ 2. orb create ubuntu:24.04 vohive（建 VM，~30s）
-  ├─ 3. 等待 orb -m vohive true 就绪
-  ├─ 4. 提示插入大疆模块，检测 2ca3:4006 后 orb usb attach
-  ├─ 5. orb push scripts/vm-init.sh + dji2quectel.sh 进 VM
-  ├─ 6. orb -m vohive bash /tmp/vm-init.sh
+  ├─ 1. 检查依赖（sshpass、ssh、utmctl）
+  ├─ 2. 交互式输入 VM IP/用户名/密码（或通过环境变量）
+  ├─ 3. SSH 测试 + 内核检查（拒绝 OrbStack 内核）
+  ├─ 4. 检查 Quectel 模块在 VM 内可见（lsusb）+ 设备节点（ttyUSB + cdc-wdm0）
+  │      └─ 不可见时提示 UTM GUI USB 勾选 / 物理拔插
+  ├─ 5. SCP 传 vm-init.sh + dji2quectel.sh 到 VM
+  ├─ 6. SSH 执行 vm-init.sh
   │      ├─ 装 docker（VM 内）
-  │      ├─ bash /tmp/dji2quectel.sh（改身份，一次性）
-  │      └─ docker run -d openvohive（起平台，PROXY_* env）
-  └─ 7. 打印 http://<VM-IP>:7575 + 提示 docker logs 看密码
+  │      ├─ bash dji2quectel.sh（改身份，幂等，已是 Quectel 则跳过）
+  │      ├─ docker pull ghcr.io/dannyge/openvohive:latest
+  │      └─ docker run -d openvohive（privileged + /dev + /sys）
+  ├─ 7. API 调用：添加设备到 openvohive
+  │      POST /api/devices {id, device_backend:qmi, control_device:/dev/cdc-wdm0}
+  └─ 8. 打印 http://<VM-IP>:7575 + 密码信息
 ```
 
-### 7.3 关键设计点
+### 7.4 关键设计点
 
-1. **镜像进 VM**：`orb push` 推送，或 `docker save | orb -m vohive docker load`。OrbStack 的 VM 与 Mac 的 Docker daemon **不共享**（VM 是独立系统）——需显式传输。（注：早期设计曾误以为"共享 daemon 免传输"，经核实 VM 是独立 Linux 系统，已修正。）
-2. **USB 直通自动化**：
-   ```sh
-   DEV=$(orb usb list | grep "2ca3:4006" | awk '{print $1}')
-   [ -z "$DEV" ] && { echo "未检测到大疆模块"; exit 1; }
-   orb usb attach "$DEV" vohive
-   ```
-3. **幂等**：可重复跑。已存在 VM 不重建（`orb list` 检查）；已改身份跳过（脚本自身幂等）；已在跑容器不重启（`docker ps` 检查）。
-4. **OrbStack 为唯一首选**：Lume 因 Apple Virtualization Framework 无 USB 直通 API 而排除；UTM 仅在文档中作为降级路径（GUI 操作 + 手动），不实现完整自动化。
-5. **VM-IP 获取**：`orb -m vohive ip` 或 VM 内 `hostname -I`。
+1. **UTM 而非 OrbStack**：实测确认 OrbStack 内核（`7.0.11-orbstack`）缺 `option`/`qmi_wwan`/uevent，openvohive 无法发现设备。UTM Ubuntu VM（内核 `6.8.0-134-generic`）有完整内核模块，option/qmi_wwan 自动绑定，openvohive 成功发现设备。
+2. **设备添加需 API 调用**：openvohive 的 `POST /api/devices/actions/rescan` 发现 QMI 但不自动注册设备。需手动 `POST /api/devices` 带 `device_backend=qmi, control_device=/dev/cdc-wdm0`（实测确认）。
+3. **幂等**：可重复跑。已改身份跳过（脚本自身幂等）；已在跑容器不重启（`docker ps` 检查）；设备已存在跳过添加。
+4. **内核检查**：setup.sh 检测 `uname -r`，如含 `orbstack` 则拒绝并提示用 UTM。
+5. **设备节点检查**：验证 `/dev/ttyUSB*` + `/dev/cdc-wdm0` 存在；不完整时提示物理拔插（authorized 0/1 会导致 `can't set config #1, error -110`，物理拔插才能恢复）。
+6. **Lume 排除**：基于 Apple Virtualization Framework，无 USB 直通 API。
+7. **VM 创建自动化**：UTM 支持通过 AppleScript（`osascript`）创建 VM（`make new virtual machine with properties`），但需 GUI session 授权。VM 创建为一次性手动操作，日常运行通过 SSH 自动化。
 
-### 7.4 文件位置
+### 7.5 文件位置
 
 ```
 scripts/
-├── setup.sh              # Mac 端主编排
-├── vm-init.sh            # VM 内部执行（装docker+改身份+起平台）
-├── dji2quectel.sh        # 与 dji2quectel/ 目录同一份
-└── lib/                  # 辅助函数（orb 检测、日志、错误处理）
+├── setup.sh              # Mac 端主编排（SSH + UTM）
+├── vm-init.sh            # VM 内部执行（装docker+改身份+起容器）
+├── dji2quectel.sh        # 与 dji2quectel/ 目录同一份（symlink）
+└── lib/                  # 辅助函数（日志、错误处理）
 ```
 
 ## 8. 多架构构建（docker-bake.hcl）
