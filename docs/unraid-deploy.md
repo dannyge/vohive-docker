@@ -28,7 +28,11 @@ sleep 2
 ls /dev/ttyUSB* /dev/cdc-wdm0
 ```
 
-> Unraid 基于 Slackware，使用完整 Linux 内核，`option`/`qmi_wwan` 驱动通常开箱即用。如果 `modprobe` 报模块不存在，可能需要安装 `kernel-modules` 包或更新 Unraid 版本。
+> **Unraid 内核模块说明**：
+> - `option` 驱动（生成 ttyUSB）通常可用——Quectel EC25 的串口接口能正常绑定。
+> - `qmi_wwan` 驱动（生成 cdc-wdm0）**在 Unraid stock 内核中可能不存在**（实测 Unraid 7.3.x / 内核 `6.18.33-Unraid` 缺此模块，`modprobe qmi_wwan` 报 `Module not found`）。
+> - **缺 cdc-wdm0 不影响短信收发**——使用 AT 模式部署即可（见步骤 5 方式 B）。AT 模式只通过 `/dev/ttyUSB2` 发 AT 指令，不需要 QMI 接口。
+> - 如果需要 QMI 功能（数据连接等），需要自行编译 `qmi_wwan` 内核模块——Unraid 从 RAM 运行，需用 User Scripts 插件在开机时加载编译好的模块。
 
 ---
 
@@ -137,11 +141,11 @@ docker logs openvohive 2>&1 | grep 密码
 
 openvohive 启动后不会自动发现设备（需要手动添加一次，之后重启自动恢复）。
 
-### 在 openvohive 后台 Web UI 添加
+> **Unraid 内核可能缺 `qmi_wwan` 模块**（实测 Unraid 7.3.x 内核 `6.18.33-Unraid` 未编译该模块）。如果步骤 1 确认 `/dev/cdc-wdm0` 不存在，使用下面的 **AT 模式**（不需要 cdc-wdm0，只用 ttyUSB 发 AT 指令）。短信收发功能完全不受影响。
 
-1. 登录后台
-2. 进入设备管理页面
-3. 添加新设备，填入：
+### 方式 A：QMI 模式（有 /dev/cdc-wdm0 时）
+
+在 openvohive 后台 Web UI 添加设备：
 
 | 字段 | 值 |
 |---|---|
@@ -149,22 +153,42 @@ openvohive 启动后不会自动发现设备（需要手动添加一次，之后
 | **设备后端** | `qmi` |
 | **控制设备** | `/dev/cdc-wdm0` |
 
-4. 保存并启动
-
-### 或通过 API 添加（SSH）
-
+或通过 API 添加（SSH）：
 ```bash
-# 登录获取 token
 TOKEN=$(curl -s -X POST http://localhost:7575/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"你的密码"}' \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
 
-# 添加设备
 curl -s -X POST http://localhost:7575/api/devices \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"config":{"id":"quectel-1","device_backend":"qmi","control_device":"/dev/cdc-wdm0"}}'
+```
+
+### 方式 B：AT 模式（无 /dev/cdc-wdm0 时，Unraid 常见）
+
+> Unraid 内核通常缺 `qmi_wwan` 模块，导致没有 `/dev/cdc-wdm0`。此时用 AT 模式——只通过 `/dev/ttyUSB2`（Quectel 标准 AT 口）发 AT 指令，不需要 QMI 接口。**短信收发完全正常**，仅 QMI 相关功能（数据连接、网络模式查询等）不可用。
+
+在 openvohive 后台 Web UI 添加设备：
+
+| 字段 | 值 |
+|---|---|
+| **设备 ID** | 自定义，如 `quectel-1` |
+| **设备后端** | `at` |
+| **AT 端口** | `/dev/ttyUSB2` |
+
+或通过 API 添加（SSH）：
+```bash
+TOKEN=$(curl -s -X POST http://localhost:7575/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"你的密码"}' \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
+
+curl -s -X POST http://localhost:7575/api/devices \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"config":{"id":"quectel-1","device_backend":"at","at_port":"/dev/ttyUSB2"}}'
 ```
 
 预期返回：`{"started":true,"status":"ok"}`
