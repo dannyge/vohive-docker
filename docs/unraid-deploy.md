@@ -71,12 +71,14 @@ ls /dev/ttyUSB* /dev/cdc-wdm0
 
 > 这个目录存放 SQLite 数据库（短信、联系人、设备配置）和日志。Unraid 重启后数据不丢失。
 
-### Variable（可选）
+### Variable（Web 账号密码）
 
-| 字段 | 值 | 说明 |
+| Key | Value | 说明 |
 |---|---|---|
-| **Key** | `PROXY_WEB_PASSWORD` | |
-| **Value** | `你的密码` | 不设则每次启动随机生成（见容器日志） |
+| `PROXY_WEB_USERNAME` | `admin` | Web 登录用户名（默认 admin） |
+| `PROXY_WEB_PASSWORD` | `你的密码` | Web 登录密码（**不设则每次启动随机生成**，见容器日志） |
+
+> 建议显式设置密码，否则每次容器重启都会换一个随机密码（需 `docker logs openvohive \| grep 密码` 查看）。
 
 其他可选变量（按需添加）：
 
