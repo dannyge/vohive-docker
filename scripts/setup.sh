@@ -52,11 +52,14 @@ if [ -z "$VM_PASS" ]; then
   printf "\n"
 fi
 
-SSH_CMD="sshpass -p '$VM_PASS' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${VM_USER}@${VM_IP}"
+# SSH 辅助函数（避免 eval 转义问题）
+ssh_run() {
+  sshpass -p "$VM_PASS" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 "$VM_USER@$VM_IP" "$@"
+}
 
 # 测试 SSH 连接
 log "测试 SSH 连接 ${VM_USER}@${VM_IP}..."
-if eval "$SSH_CMD 'echo ok'" 2>/dev/null | grep -q ok; then
+if ssh_run 'echo ok' 2>/dev/null | grep -q ok; then
   ok "SSH 连接成功"
 else
   err "SSH 连接失败。请确认 VM 在运行、IP/用户名/密码正确。"
@@ -64,7 +67,7 @@ else
 fi
 
 # 检查内核（确认是完整 Linux 内核，不是 OrbStack 精简版）
-KERNEL=$(eval "$SSH_CMD 'uname -r'" 2>/dev/null)
+KERNEL=$(ssh_run 'uname -r' 2>/dev/null)
 log "VM 内核: $KERNEL"
 if echo "$KERNEL" | grep -q "orbstack"; then
   err "检测到 OrbStack 内核——openvohive 需要 UTM Ubuntu VM（完整内核）。"
@@ -74,7 +77,7 @@ ok "完整 Linux 内核确认"
 
 # ── 3. USB 直通提示 ──────────────────────────────────────
 log "检查 Quectel 模块是否在 VM 内可见..."
-QUECTEL=$(eval "$SSH_CMD 'lsusb 2>/dev/null | grep -i quectel'" 2>/dev/null || true)
+QUECTEL=$(ssh_run 'lsusb 2>/dev/null | grep -i quectel' 2>/dev/null || true)
 if [ -n "$QUECTEL" ]; then
   ok "Quectel 模块已在 VM 内: $QUECTEL"
 else
@@ -83,7 +86,7 @@ else
   printf "  操作完成后按回车继续..."
   read -r
   # 再次检查
-  QUECTEL=$(eval "$SSH_CMD 'lsusb 2>/dev/null | grep -i quectel'" 2>/dev/null || true)
+  QUECTEL=$(ssh_run 'lsusb 2>/dev/null | grep -i quectel' 2>/dev/null || true)
   if [ -z "$QUECTEL" ]; then
     err "仍未检测到 Quectel 模块。请确认 USB 直通已启用。"
     exit 1
@@ -92,16 +95,16 @@ else
 fi
 
 # 检查设备节点（option 驱动应自动生成）
-TTYUSB=$(eval "$SSH_CMD 'ls /dev/ttyUSB* 2>/dev/null | wc -l'" 2>/dev/null || echo 0)
-CDCWDM=$(eval "$SSH_CMD 'ls /dev/cdc-wdm0 2>/dev/null'" 2>/dev/null || true)
+TTYUSB=$(ssh_run 'ls /dev/ttyUSB* 2>/dev/null | wc -l' 2>/dev/null || echo 0)
+CDCWDM=$(ssh_run 'ls /dev/cdc-wdm0 2>/dev/null' 2>/dev/null || true)
 if [ "$TTYUSB" -gt 0 ] && [ -n "$CDCWDM" ]; then
   ok "设备节点就绪: $TTYUSB 个 ttyUSB + cdc-wdm0"
 else
   warn "设备节点不完整（ttyUSB=$TTYUSB cdc-wdm=$CDCWDM）"
   warn "可能需要物理拔插模块重新枚举。请拔插后按回车继续..."
   read -r
-  TTYUSB=$(eval "$SSH_CMD 'ls /dev/ttyUSB* 2>/dev/null | wc -l'" 2>/dev/null || echo 0)
-  CDCWDM=$(eval "$SSH_CMD 'ls /dev/cdc-wdm0 2>/dev/null'" 2>/dev/null || true)
+  TTYUSB=$(ssh_run 'ls /dev/ttyUSB* 2>/dev/null | wc -l' 2>/dev/null || echo 0)
+  CDCWDM=$(ssh_run 'ls /dev/cdc-wdm0 2>/dev/null' 2>/dev/null || true)
   if [ "$TTYUSB" -eq 0 ] || [ -z "$CDCWDM" ]; then
     err "设备节点仍不完整。请确认 option 和 qmi_wwan 驱动已加载。"
     exit 1
@@ -112,50 +115,99 @@ fi
 # ── 4. 在 VM 内安装 Docker + 部署 openvohive ─────────────
 log "传输部署脚本到 VM..."
 DEPLOY_DIR="/opt/vohive"
-eval "$SSH_CMD 'echo $VM_PASS | sudo -S mkdir -p $DEPLOY_DIR'" 2>/dev/null
+sshpass -p "$VM_PASS" ssh -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" \
+  "echo '$VM_PASS' | sudo -S mkdir -p $DEPLOY_DIR/lib 2>/dev/null" 2>/dev/null || true
 
 # 传 vm-init.sh
 sshpass -p "$VM_PASS" scp -o StrictHostKeyChecking=no \
   "$SCRIPT_DIR/vm-init.sh" "${VM_USER}@${VM_IP}:/tmp/vm-init.sh" 2>/dev/null
-eval "$SSH_CMD 'echo $VM_PASS | sudo -S cp /tmp/vm-init.sh $DEPLOY_DIR/vm-init.sh && sudo chmod +x $DEPLOY_DIR/vm-init.sh'" 2>/dev/null
+sshpass -p "$VM_PASS" ssh -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" \
+  "echo '$VM_PASS' | sudo -S cp /tmp/vm-init.sh $DEPLOY_DIR/vm-init.sh 2>/dev/null && sudo chmod +x $DEPLOY_DIR/vm-init.sh" 2>/dev/null || true
 
 # 传 lib/common.sh
-eval "$SSH_CMD 'echo $VM_PASS | sudo -S mkdir -p $DEPLOY_DIR/lib'" 2>/dev/null
 sshpass -p "$VM_PASS" scp -o StrictHostKeyChecking=no \
   "$SCRIPT_DIR/lib/common.sh" "${VM_USER}@${VM_IP}:/tmp/common.sh" 2>/dev/null
-eval "$SSH_CMD 'echo $VM_PASS | sudo -S cp /tmp/common.sh $DEPLOY_DIR/lib/common.sh'" 2>/dev/null
+sshpass -p "$VM_PASS" ssh -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" \
+  "echo '$VM_PASS' | sudo -S cp /tmp/common.sh $DEPLOY_DIR/lib/common.sh 2>/dev/null" 2>/dev/null || true
 
 # 传 dji2quectel.sh（首次改身份用，已是 Quectel 则跳过）
 sshpass -p "$VM_PASS" scp -o StrictHostKeyChecking=no \
   "$PROJECT_ROOT/dji2quectel/dji2quectel.sh" "${VM_USER}@${VM_IP}:/tmp/dji2quectel.sh" 2>/dev/null
-eval "$SSH_CMD 'echo $VM_PASS | sudo -S cp /tmp/dji2quectel.sh $DEPLOY_DIR/dji2quectel.sh && sudo chmod +x $DEPLOY_DIR/dji2quectel.sh'" 2>/dev/null
+sshpass -p "$VM_PASS" ssh -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" \
+  "echo '$VM_PASS' | sudo -S cp /tmp/dji2quectel.sh $DEPLOY_DIR/dji2quectel.sh 2>/dev/null && sudo chmod +x $DEPLOY_DIR/dji2quectel.sh" 2>/dev/null || true
 
 # 在 VM 内执行初始化（装 docker、改身份、起容器）
+# 把 PROXY_* 环境变量传到 VM 里（SSH 不自动继承本地环境）
 log "在 VM 内执行部署..."
-eval "$SSH_CMD 'echo $VM_PASS | sudo -S bash $DEPLOY_DIR/vm-init.sh'" 2>&1 || true
+PROXY_ENV=""
+while IFS= read -r line; do
+  PROXY_ENV="$PROXY_ENV $line"
+done < <(env | grep '^PROXY_')
+sshpass -p "$VM_PASS" ssh -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" \
+  "echo '$VM_PASS' | sudo -S env $PROXY_ENV bash $DEPLOY_DIR/vm-init.sh" 2>&1 || true
 
 # ── 5. 添加设备到 openvohive（API 调用）──────────────────
 # 实测发现：openvohive 的 rescan 发现 QMI 但不自动注册设备，
 # 需通过 API 手动添加（device_backend=qmi, control_device=/dev/cdc-wdm0）
 log "添加设备到 openvohive..."
-eval "$SSH_CMD 'echo $VM_PASS | sudo -S bash -c \"
-  TOKEN=\\\$(curl -s -X POST http://localhost:7575/api/auth/login -H \\\"Content-Type: application/json\\\" -d \\\"{\\\\\\\"username\\\\\\\":\\\\\\\"admin\\\\\\\",\\\\\\\"password\\\\\\\":\\\\\\\"${PROXY_WEB_PASSWORD:-admin}\\\\\\\"}\\\" | python3 -c \\\"import sys,json; print(json.load(sys.stdin)[\\\\\\\"token\\\\\\\"])\\\" 2>/dev/null)
-  if [ -z \\\"\\\$TOKEN\\\" ]; then
-    # 随机密码模式：从日志提取
-    PASS=\\\$(docker logs vohive 2>&1 | grep \\\"密码\\\" | tail -1 | grep -oE '[A-Za-z0-9]{12}' | tail -1)
-    [ -z \\\"\\\$PASS\\\" ] && PASS=\\\$(docker logs vohive 2>&1 | grep \\\"password\\\" | tail -1 | grep -oE \\\"[A-Za-z0-9]{12}\\\" | tail -1)
-    TOKEN=\\\$(curl -s -X POST http://localhost:7575/api/auth/login -H \\\"Content-Type: application/json\\\" -d \\\"{\\\\\\\"username\\\\\\\":\\\\\\\"admin\\\\\\\",\\\\\\\"password\\\\\\\":\\\\\\\"\\\$PASS\\\\\\\"}\\\" | python3 -c \\\"import sys,json; print(json.load(sys.stdin)[\\\\\\\"token\\\\\\\"])\\\" 2>/dev/null)
+
+# 写一个临时脚本到 VM 里执行（避免 SSH 内联转义地狱）
+ADD_DEVICE_SCRIPT="/tmp/add_device.sh"
+cat > /tmp/add_device_local.sh << 'ADDEOF'
+#!/bin/bash
+set -eu
+DEVICE_ID="${1:-quectel-1}"
+WEB_PASS="${2:-}"
+
+# 登录获取 token
+if [ -n "$WEB_PASS" ]; then
+  TOKEN=$(curl -s -X POST http://localhost:7575/api/auth/login \
+    -H "Content-Type: application/json" \
+    -d "{\"username\":\"admin\",\"password\":\"$WEB_PASS\"}" \
+    | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])" 2>/dev/null || echo "")
+fi
+
+if [ -z "${TOKEN:-}" ]; then
+  # 随机密码模式：从日志提取密码
+  PASS=$(docker logs vohive 2>&1 | grep "密码" | tail -1 | grep -oE '[A-Za-z0-9]{12}' | tail -1 || true)
+  [ -z "$PASS" ] && PASS=$(docker logs vohive 2>&1 | grep "password" | tail -1 | grep -oE '[A-Za-z0-9]{12}' | tail -1 || true)
+  if [ -z "$PASS" ]; then
+    echo "[!] 无法获取密码，跳过设备添加。请手动在后台添加设备。"
+    exit 0
   fi
-  echo \\\"token=\\\$TOKEN\\\"
-  # 检查设备是否已存在
-  EXISTING=\\\$(curl -s http://localhost:7575/api/devices -H \\\"Authorization: Bearer \\\$TOKEN\\\" | python3 -c \\\"import sys,json; d=json.load(sys.stdin); print(len(d.get(\\\\\\\"devices\\\\\\\",[])))\\\" 2>/dev/null)
-  if [ \\\"\\\$EXISTING\\\" = \\\"0\\\" ]; then
-    echo \\\"添加设备 $DEVICE_ID...\\\"
-    curl -s -X POST http://localhost:7575/api/devices -H \\\"Authorization: Bearer \\\$TOKEN\\\" -H \\\"Content-Type: application/json\\\" -d \\\"{\\\\\\\"config\\\\\\\":{\\\\\\\"id\\\\\\\":\\\\\\\"$DEVICE_ID\\\\\\\",\\\\\\\"device_backend\\\\\\\":\\\\\\\"qmi\\\\\\\",\\\\\\\"control_device\\\\\\\":\\\\\\\"/dev/cdc-wdm0\\\\\\\"}}\\\"
-  else
-    echo \\\"设备已存在（\\\$EXISTING 个），跳过添加\\\"
-  fi
-\"'" 2>&1
+  TOKEN=$(curl -s -X POST http://localhost:7575/api/auth/login \
+    -H "Content-Type: application/json" \
+    -d "{\"username\":\"admin\",\"password\":\"$PASS\"}" \
+    | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])" 2>/dev/null || echo "")
+fi
+
+if [ -z "${TOKEN:-}" ]; then
+  echo "[!] 登录失败，跳过设备添加。"
+  exit 0
+fi
+
+# 检查设备是否已存在
+EXISTING=$(curl -s http://localhost:7575/api/devices \
+  -H "Authorization: Bearer $TOKEN" \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d.get('devices',[])))" 2>/dev/null || echo "0")
+
+if [ "$EXISTING" = "0" ]; then
+  echo "添加设备 $DEVICE_ID..."
+  curl -s -X POST http://localhost:7575/api/devices \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d "{\"config\":{\"id\":\"$DEVICE_ID\",\"device_backend\":\"qmi\",\"control_device\":\"/dev/cdc-wdm0\"}}"
+  echo ""
+else
+  echo "设备已存在（$EXISTING 个），跳过添加"
+fi
+ADDEOF
+
+# 传到 VM 并执行
+sshpass -p "$VM_PASS" scp -o StrictHostKeyChecking=no \
+  /tmp/add_device_local.sh "${VM_USER}@${VM_IP}:${ADD_DEVICE_SCRIPT}"
+sshpass -p "$VM_PASS" ssh -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" \
+  "echo '$VM_PASS' | sudo -S bash $ADD_DEVICE_SCRIPT '$DEVICE_ID' '${PROXY_WEB_PASSWORD:-}'" 2>&1 || true
 
 # ── 6. 输出访问信息 ─────────────────────────────────────
 printf "\n"

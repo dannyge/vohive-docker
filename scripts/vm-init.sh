@@ -16,11 +16,14 @@ DATA_DIR="/opt/vohive/data"
 DEPLOY_DIR="${VOHIVE_DEPLOY_DIR:-/opt/vohive}"
 CONTAINER="${VOHIVE_CONTAINER:-vohive}"
 
-# ── 1. 安装 Docker（若未装）──────────────────────────────
+# ── 1. 安装 Docker + 依赖（若未装）───────────────────────
+# 先装基础依赖（socat/usbutils/kmod 等，dji2quectel.sh 需要）
+log "检查基础依赖..."
+apt-get update -qq 2>/dev/null
+apt-get install -y -qq ca-certificates curl socat usbutils kmod 2>/dev/null || true
+
 if ! command -v docker >/dev/null 2>&1; then
   log "安装 Docker..."
-  apt-get update -qq
-  apt-get install -y -qq ca-certificates curl socat usbutils kmod
   install -m 0755 -d /etc/apt/keyrings
   curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
   chmod a+r /etc/apt/keyrings/docker.asc
