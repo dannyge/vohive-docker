@@ -80,6 +80,18 @@ ls /dev/ttyUSB* /dev/cdc-wdm0
 
 > 建议显式设置密码，否则每次容器重启都会换一个随机密码（需 `docker logs openvohive \| grep 密码` 查看）。
 
+### Bark 推送配置（推荐）
+
+openvohive 支持 Bark 推送——收到短信时自动推送到 iPhone，并**自动提取验证码**到剪贴板。推荐在后台 Web UI 配置（见步骤 4 后的 Bark 设置），也可以通过变量预配：
+
+| Key | Value | 说明 |
+|---|---|---|
+| `PROXY_BARK_ENABLED` | `true` | 启用 Bark 推送 |
+| `PROXY_BARK_DEVICE_KEY` | `你的BarkKey` | Bark App 里复制的 key（必填） |
+| `PROXY_BARK_SERVER_URL` | `https://api.day.app` | 官方节点（默认）或自建 `http://ip:port` |
+
+> **验证码自动复制**：收到短信时 Bark 推送会自动提取 4-8 位验证码（支持中文"验证码"/英文"code"格式），设为 `copy` 字段。iOS 14.5 以上需长按推送触发复制，14.5 以下自动复制。
+
 其他可选变量（按需添加）：
 
 | Key | 说明 |
@@ -233,7 +245,9 @@ curl -s http://localhost:7575/api/devices \
 | 容器内看不到设备 | 没挂载 /dev 或没用 privileged | 确认 Extra Parameters 含 `--privileged -v /dev:/dev -v /sys:/sys` |
 | 添加设备返回 "未发现调制解调器" | 容器内无 cdc-wdm0 | SSH 进 Unraid 确认 `/dev/cdc-wdm0` 存在；确认容器 privileged + /dev 挂载 |
 | 登录提示密码错误 | 密码不匹配 | 检查 `PROXY_WEB_PASSWORD` 变量；或从日志取随机密码 |
-| 容器重启后设备消失 | 设备配置未持久化 | 确认 `/mnt/user/appdata/openvohive` → `/app/data` 路径映射正确 |
+| 容器重启后设备消失 | config.yaml 路径映射不对 | 确认 `/mnt/user/appdata/openvohive` → `/app/data` 映射正确；config.yaml 存在 `/app/data/config.yaml`（自动持久化） |
+| Bark 推送收不到 | device_key 错误 / 网络不通 | 确认 Bark App 里的 key 正确；自建服务器确认网络可达 |
+| Bark 推送没有自动复制验证码 | iOS 版本限制 / 镜像未更新 | iOS 14.5 以上需长按推送；确认镜像含 `autoCopy` 修复（拉取最新 `:latest`） |
 | 端口 7575 被占用 | 其他容器占用了该端口 | 换一个 Host Port（如 7576），或在 Unraid 里停掉占用端口的容器 |
 
 ---
@@ -244,11 +258,11 @@ curl -s http://localhost:7575/api/devices \
 
 | 文件 | 用途 |
 |---|---|
-| `vohive.db` | SQLite 数据库（短信、联系人、eSIM、设备配置） |
+| `vohive.db` | SQLite 数据库（短信、联系人、eSIM） |
+| `config.yaml` | 运行时配置（含已添加的设备、通知设置——重启后自动恢复） |
 | `logs/app.log` | 应用日志 |
-| `config.yaml` | 运行时配置（含已添加的设备） |
 
-容器重启后，设备配置从 `config.yaml` 自动恢复，无需重新添加设备。
+> **config.yaml 自动持久化**：首次启动时从镜像内置模板复制到 `/app/data/config.yaml`；后续重启沿用持久化的配置。添加的设备和 Bark/Telegram/Email 通知设置都会保存，重启不丢。
 
 ---
 

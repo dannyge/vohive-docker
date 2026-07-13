@@ -6,7 +6,7 @@
 
 | 镜像/脚本 | 说明 |
 |---|---|
-| [**openvohive**](https://github.com/users/dannyge/packages/container/openvohive) | 开源版，聚焦短信收发/转发（Telegram/Email/Webhook），主力 |
+| [**openvohive**](https://github.com/users/dannyge/packages/container/openvohive) | 开源版，聚焦短信收发/转发（Telegram/Email/Webhook/**Bark**），主力 |
 | [**vohive-legacy**](https://github.com/users/dannyge/packages/container/vohive-legacy) | 闭源完整版 v1.5.5（含 VoWiFi/代理等），过渡兼容 |
 | [**dji2quectel**](https://github.com/users/dannyge/packages/container/dji2quectel)（[组件文档](dji2quectel/README.md)） | 把大疆 4G 模块改写为移远 Quectel 身份（一次性工具） |
 | [`scripts/setup.sh`](scripts/setup.sh) | macOS 上用 UTM VM + SSH 一键部署（含设备自动添加） |
@@ -62,6 +62,18 @@ docker compose up                   # 改身份 + 起平台
 | `PROXY_TELEGRAM_*` | 禁用 | Telegram 转发配置 |
 | `PROXY_WEBHOOK_*` | 禁用 | Webhook 配置 |
 | `PROXY_EMAIL_*` | 禁用 | Email 配置 |
+| `PROXY_BARK_*` | 禁用 | Bark 推送配置（官方/自建节点，含验证码自动复制） |
+
+### Bark 推送（含验证码自动复制）
+
+openvohive 支持 Bark 推送通知——收到短信时自动推送到 iPhone，并**自动提取验证码**设为 `copy` 字段，长按推送即可粘贴验证码。
+
+在 openvohive 后台 → 设置 → 通知 → **Bark** 面板配置：
+- **服务器地址**：`https://api.day.app`（官方）或自建 `http://your-ip:port`
+- **Device Key**：Bark App 里复制的 key
+- 启用后收到短信自动推送，验证码自动提取（4-8 位数字，支持中文"验证码"/英文"code"格式）
+
+> iOS 14.5 以上需**长按或下拉推送**触发复制（系统限制）。
 
 ## 构建
 
@@ -91,10 +103,16 @@ REGISTRY=your-registry.com docker buildx bake --push
 
 ## 数据持久化
 
-挂载 `/app/data` 目录（含 SQLite 库和日志）：
+挂载 `/app/data` 目录（含 SQLite 库、日志、配置）：
 ```bash
 -v vohive-data:/app/data
 ```
+
+容器重启后以下数据自动恢复：
+- SQLite 数据库（短信、联系人、eSIM）
+- 设备配置（含已添加的设备，无需重新添加）
+- 通知设置（Telegram/Webhook/Email/Bark 配置）
+- 应用日志
 
 ## 子模块
 
@@ -107,7 +125,7 @@ git submodule update --init --recursive
 |---|---|---|
 | `ref/vohive-release` | [iniwex5/vohive-release](https://github.com/iniwex5/vohive-release) | 参考（install.sh 模板） |
 | `ref/dji-4g-vohive-mac` | [wlzh/dji-4g-vohive-mac](https://github.com/wlzh/dji-4g-vohive-mac) | 参考（mcc-mnc-table.json、改身份教程） |
-| `openvohive/src` | [openvohive/openvohive](https://github.com/openvohive/openvohive) | openvohive 镜像的源码 |
+| `openvohive/src` | [dannyge/openvohive](https://github.com/dannyge/openvohive)（fork，含 Bark 渠道） | openvohive 镜像的源码 |
 
 ## 文档
 

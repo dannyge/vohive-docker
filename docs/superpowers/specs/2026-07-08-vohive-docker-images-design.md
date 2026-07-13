@@ -628,10 +628,13 @@ target "dji2quectel" {
 
 ## 11. 验收标准
 
-- [ ] `docker buildx bake` 成功构建三个镜像的 amd64+arm64 manifest
-- [ ] `openvohive` 镜像：传入 `PROXY_WEB_PASSWORD` 能登录后台；不传时日志打印随机密码
-- [ ] `openvohive` 镜像：`PROXY_TELEGRAM_*` 配置后能收到短信转发
-- [ ] `vohive-legacy` 镜像：entrypoint 正确渲染 config.yaml，二进制能启动
-- [ ] `dji2quectel.sh`：在大疆模块上执行后 `lsusb` 显示 `2c7c:0125`
-- [ ] `dji2quectel.sh`：对已是 Quectel 身份的模块幂等跳过
-- [ ] `setup.sh`：在干净 Mac 上执行，最终能访问 `http://<VM-IP>:7575`
+- [x] `docker buildx bake` 成功构建三个镜像的 amd64+arm64 manifest
+- [x] `openvohive` 镜像：传入 `PROXY_WEB_PASSWORD` 能登录后台；不传时日志打印随机密码
+- [x] `openvohive` 镜像：短信收发验证通过（UTM Ubuntu VM + Unraid，真实硬件 DJI QDC507）
+- [x] `vohive-legacy` 镜像：entrypoint 正确渲染 config.yaml，二进制能启动
+- [x] `dji2quectel.sh`：在大疆模块上执行后 `lsusb` 显示 `2c7c:0125`（真实硬件实测）
+- [x] `dji2quectel.sh`：对已是 Quectel 身份的模块幂等跳过
+- [x] `setup.sh`：在 UTM Ubuntu VM 上执行，最终能访问后台且设备自动添加并在线
+- [x] 容器重启后设备自动恢复（config.yaml 持久化到 `/app/data/`）
+- [x] Bark 推送渠道：收到短信时推送到 iPhone，验证码自动提取并设为 copy 字段（实测通过）
+- [x] Unraid 部署：通过 Web UI 部署成功，AT 模式运行（Unraid 内核缺 qmi_wwan）
