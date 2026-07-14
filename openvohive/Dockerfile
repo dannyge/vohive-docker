@@ -30,8 +30,13 @@ COPY --from=frontend /build/web/dist ./web/dist
 #   - internal/esim/pki/pki.go 会调用 `curl`（此 stage 无 curl），且 ci.json/accredited.json
 #     已在 submodule 中提交
 # 因此直接编译即可。
+# 通过 -ldflags -X 注入版本号和构建时间到 internal/global 包
+ARG VOHIVE_VERSION=dev
 RUN CGO_ENABLED=0 GOOS=linux go build \
-    -ldflags="-s -w" -trimpath \
+    -ldflags="-s -w \
+      -X github.com/openvohive/openvohive/internal/global.Version=${VOHIVE_VERSION} \
+      -X github.com/openvohive/openvohive/internal/global.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    -trimpath \
     -o /out/server .
 
 # ── Stage 3: 运行时 ────────────────────────────────────────
