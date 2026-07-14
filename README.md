@@ -6,9 +6,9 @@
 
 | 镜像/脚本 | 说明 |
 |---|---|
-| [**openvohive**](https://github.com/users/dannyge/packages/container/openvohive) | 开源版，聚焦短信收发/转发（Telegram/Email/Webhook/**Bark**），主力 |
-| [**vohive-legacy**](https://github.com/users/dannyge/packages/container/vohive-legacy) | 闭源完整版 v1.5.5（含 VoWiFi/代理等），过渡兼容 |
-| [**dji2quectel**](https://github.com/users/dannyge/packages/container/dji2quectel)（[组件文档](dji2quectel/README.md)） | 把大疆 4G 模块改写为移远 Quectel 身份（一次性工具） |
+| [**openvohive**](https://github.com/dannyge/vohive-docker/pkgs/container/openvohive)（[README](openvohive/README.md)） | 开源版，聚焦短信收发/转发（Telegram/Email/Webhook/**Bark**），主力 |
+| [**vohive-legacy**](https://github.com/dannyge/vohive-docker/pkgs/container/vohive-legacy)（[README](vohive-legacy/README.md)） | 闭源完整版 v1.5.5（含 VoWiFi/代理等），过渡兼容 |
+| [**dji2quectel**](https://github.com/dannyge/vohive-docker/pkgs/container/dji2quectel)（[README](dji2quectel/README.md)） | 把大疆 4G 模块改写为移远 Quectel 身份（一次性工具） |
 | [`scripts/setup.sh`](scripts/setup.sh) | macOS 上用 UTM VM + SSH 一键部署（含设备自动添加） |
 
 ## 快速开始
@@ -62,18 +62,16 @@ docker compose up                   # 改身份 + 起平台
 | `PROXY_TELEGRAM_*` | 禁用 | Telegram 转发配置 |
 | `PROXY_WEBHOOK_*` | 禁用 | Webhook 配置 |
 | `PROXY_EMAIL_*` | 禁用 | Email 配置 |
-| `PROXY_BARK_*` | 禁用 | Bark 推送配置（官方/自建节点，含验证码自动复制） |
+| `PROXY_BARK_*` | 禁用 | Bark 推送配置（官方/自建节点） |
 
-### Bark 推送（含验证码自动复制）
+### Bark 推送
 
-openvohive 支持 Bark 推送通知——收到短信时自动推送到 iPhone，并**自动提取验证码**设为 `copy` 字段，长按推送即可粘贴验证码。
+openvohive 支持 Bark 推送通知——收到短信时自动推送到 iPhone。
 
 在 openvohive 后台 → 设置 → 通知 → **Bark** 面板配置：
 - **服务器地址**：`https://api.day.app`（官方）或自建 `http://your-ip:port`
 - **Device Key**：Bark App 里复制的 key
-- 启用后收到短信自动推送，验证码自动提取（4-8 位数字，支持中文"验证码"/英文"code"格式）
-
-> iOS 14.5 以上需**长按或下拉推送**触发复制（系统限制）。
+- 启用后收到短信自动推送到 iPhone
 
 ## 构建
 
