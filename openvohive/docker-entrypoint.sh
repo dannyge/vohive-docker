@@ -27,6 +27,11 @@ fi
 
 # ── 数据/日志目录 ─────────────────────────────────────────
 mkdir -p /app/data/logs
+# openvohive 硬编码日志路径为 logs/app.log（相对于 /app），
+# 用符号链接将其重定向到持久化的 /app/data/logs/
+if [ ! -e /app/logs ]; then
+  ln -s /app/data/logs /app/logs
+fi
 
 # ── 启动（viper AutomaticEnv 自动读取 PROXY_* 环境变量）────
 exec /app/server -c "$CONFIG" ${VOHIVE_ARGS:-}
