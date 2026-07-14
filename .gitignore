@@ -16,5 +16,11 @@
 .vscode/
 *.swp
 
+# ZCode 工具配置
+.zcode/
+
+# npm 锁文件（项目用 bun，不应有 package-lock.json）
+**/package-lock.json
+
 # 不忽略 assets/ 本身（二进制需进仓库，因为是构建依赖且来源第三方可能消失）
 # 不忽略 docs/ ref/ openvohive/ vohive-legacy/ dji2quectel/ scripts/
